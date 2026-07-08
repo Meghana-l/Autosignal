@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AutoSignal — Vehicle Defect Early-Warning</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#ffffff; --ink:#1a2230; --muted:#5b6675;
+    --line:#e4e8ee; --accent:#123a6b; --accent2:#2f6bb3;
+    --red:#c0392b; --amber:#c77d10; --green:#1f8a54; --chip:#eef2f7;
+    --shadow:0 1px 3px rgba(20,40,80,.06),0 6px 18px rgba(20,40,80,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.5}
+  .wrap{max-width:1160px;margin:0 auto;padding:22px 20px 60px}
+  header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:6px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:40px;height:40px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px}
+  h1{font-size:20px;margin:0;letter-spacing:-.2px}
+  .sub{color:var(--muted);font-size:13px;margin-top:1px}
+  .livechip{display:inline-flex;align-items:center;gap:6px;background:#eaf3ec;color:var(--green);
+    font-size:12px;font-weight:600;padding:5px 10px;border-radius:20px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{opacity:.4}50%{opacity:1}100%{opacity:.4}}
+
+  .controls{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    padding:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:16px 0 20px}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:12px;color:var(--muted);font-weight:600}
+  select,button{font:inherit}
+  select{padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);min-width:190px}
+  button.run{padding:10px 20px;border:none;border-radius:9px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+  button.run:hover{background:#0e2e56}
+  button.run:disabled{opacity:.6;cursor:not-allowed}
+
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
+  .kpi .n{font-size:26px;font-weight:750;letter-spacing:-.5px}
+  .kpi .l{font-size:12px;color:var(--muted);margin-top:2px}
+  .kpi.red .n{color:var(--red)} .kpi.amber .n{color:var(--amber)}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px}
+  .card h3{margin:0 0 2px;font-size:14px}
+  .card .h-sub{color:var(--muted);font-size:12px;margin-bottom:12px}
+  .chartbox{position:relative;height:250px}
+
+  .brief{background:linear-gradient(180deg,#fbfcfe,#f6f9fc);border:1px solid var(--line)}
+  .brief .body{font-size:14px;white-space:pre-wrap;color:#222c3a;min-height:60px}
+  .brief .meta{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+  .chip{background:var(--chip);border:1px solid var(--line);border-radius:20px;padding:4px 10px;font-size:11.5px;color:var(--muted)}
+  button.ai{margin-top:2px;padding:8px 16px;border:1px solid var(--accent);background:#fff;color:var(--accent);
+    border-radius:9px;font-weight:600;cursor:pointer;font-size:13px}
+  button.ai:hover{background:#f0f5fb}
+
+  .emerging{display:flex;flex-direction:column;gap:9px}
+  .erow{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
+  .erow.flag{border-color:#f0c9c3;background:#fdf4f2}
+  .erow .c{font-weight:600;font-size:13.5px}
+  .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
+  .badge.up{background:#fdeae7;color:var(--red)} .badge.flat{background:#eef2f7;color:var(--muted)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  .sev{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+  .sev.high{background:#fdeae7;color:var(--red)} .sev.std{background:#eef2f7;color:var(--muted)}
+  td.sum{color:var(--muted);max-width:440px}
+  .odi{font-variant-numeric:tabular-nums;color:var(--accent2);font-weight:600}
+
+  .full{grid-column:1/-1}
+  .foot{color:var(--muted);font-size:12px;margin-top:24px;text-align:center}
+  .loading{color:var(--muted);font-size:13px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">A</div>
+      <div>
+        <h1>AutoSignal</h1>
+        <div class="sub">Vehicle defect early-warning · live NHTSA complaint intelligence</div>
+      </div>
+    </div>
+    <div class="livechip"><span class="dot"></span> Live U.S. DOT / NHTSA data</div>
+  </header>
+
+  <div class="controls">
+    <div class="field">
+      <label>Brand &amp; model</label>
+      <select id="vehicle">
+        <optgroup label="Jeep">
+          <option value="jeep|grand cherokee">Jeep Grand Cherokee</option>
+          <option value="jeep|wrangler">Jeep Wrangler</option>
+          <option value="jeep|cherokee">Jeep Cherokee</option>
+          <option value="jeep|compass">Jeep Compass</option>
+        </optgroup>
+        <optgroup label="Ram">
+          <option value="ram|1500">Ram 1500</option>
+          <option value="ram|2500">Ram 2500</option>
+        </optgroup>
+        <optgroup label="Dodge">
+          <option value="dodge|durango">Dodge Durango</option>
+          <option value="dodge|charger">Dodge Charger</option>
+        </optgroup>
+        <optgroup label="Chrysler">
+          <option value="chrysler|pacifica">Chrysler Pacifica</option>
+          <option value="chrysler|300">Chrysler 300</option>
+        </optgroup>
+        <optgroup label="Fiat">
+          <option value="fiat|500x">Fiat 500X</option>
+        </optgroup>
+        <optgroup label="Toyota">
+          <option value="toyota|camry">Toyota Camry</option>
+          <option value="toyota|rav4">Toyota RAV4</option>
+        </optgroup>
+        <optgroup label="Honda">
+          <option value="honda|accord">Honda Accord</option>
+          <option value="honda|cr-v">Honda CR-V</option>
+        </optgroup>
+        <optgroup label="Ford">
+          <option value="ford|f-150">Ford F-150</option>
+          <option value="ford|explorer">Ford Explorer</option>
+        </optgroup>
+      </select>
+    </div>
+    <div class="field">
+      <label>Model years</label>
+      <select id="years">
+        <option value="2021,2022,2023">2021–2023</option>
+        <option value="2022,2023,2024">2022–2024</option>
+        <option value="2019,2020,2021">2019–2021</option>
+      </select>
+    </div>
+    <button class="run" id="run">Pull live complaints</button>
+    <div id="status" class="loading"></div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Complaints by component</h3>
+      <div class="h-sub">Auto-triaged into a canonical component taxonomy</div>
+      <div class="chartbox"><canvas id="compChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Complaint trend</h3>
+      <div class="h-sub">Monthly filings — the early-warning time series</div>
+      <div class="chartbox"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h3>Emerging concerns</h3>
+      <div class="h-sub">Components spiking above their recent baseline</div>
+      <div class="emerging" id="emerging"></div>
+    </div>
+
+    <div class="card brief">
+      <h3>AI early-warning brief</h3>
+      <div class="h-sub">Grounded in the pulled complaints · Groq llama-3.1-8b</div>
+      <div class="body" id="briefBody">Pull complaints, then generate a brief.</div>
+      <div class="meta" id="briefMeta"></div>
+      <div style="margin-top:12px"><button class="ai" id="genBrief" disabled>Generate brief</button></div>
+    </div>
+
+    <div class="card full">
+      <h3>Recent complaints</h3>
+      <div class="h-sub">Newest filings first · ODI numbers are the traceable source records</div>
+      <div style="overflow:auto">
+        <table id="tbl">
+          <thead><tr><th>ODI #</th><th>Component</th><th>Severity</th><th>Filed</th><th>Narrative</th></tr></thead>
+          <tbody id="tblBody"><tr><td colspan="5" class="loading">No data yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    AutoSignal pulls real consumer safety complaints live from the NHTSA public API.
+    Signals are decision support for safety engineers — not a confirmation of any defect or recall.
+  </div>
+</div>
+
+<script>
+let compChart, trendChart, lastData = null;
+
+const $ = (id) => document.getElementById(id);
+const fmtMonth = (d) => d.toLocaleString("en-US",{month:"short",year:"2-digit"});
+
+function severityFlag(c){ return c.highSeverity ? '<span class="sev high">HIGH</span>' : '<span class="sev std">std</span>'; }
+
+async function pull(){
+  const [make,model] = $("vehicle").value.split("|");
+  const years = $("years").value;
+  const label = $("vehicle").selectedOptions[0].text + " · " + $("years").selectedOptions[0].text;
+  $("run").disabled = true; $("genBrief").disabled = true;
+  $("status").textContent = "Fetching live NHTSA complaints…";
+  try{
+    const r = await fetch(`/api/complaints?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&years=${years}`);
+    const data = await r.json();
+    if(data.error) throw new Error(data.detail || data.error);
+    data.label = label;
+    lastData = data;
+    render(data);
+    $("status").textContent = `${data.count} complaints · pulled ${new Date(data.pulledAt).toLocaleString()}`;
+    $("genBrief").disabled = data.count === 0;
+  }catch(e){
+    $("status").textContent = "Error: " + e.message;
+  }finally{
+    $("run").disabled = false;
+  }
+}
+
+function render(data){
+  const cs = data.complaints;
+  const high = cs.filter(c=>c.highSeverity).length;
+  const crashes = cs.filter(c=>c.crash).length;
+  const fires = cs.filter(c=>c.fire).length;
+  const injuries = cs.reduce((s,c)=>s+c.injuries,0);
+
+  $("kpis").innerHTML = [
+    ["", data.count, "Total complaints"],
+    ["red", high, "High severity"],
+    ["amber", crashes, "Crashes reported"],
+    ["amber", fires, "Fires reported"],
+    ["red", injuries, "Injuries reported"],
+  ].map(([cl,n,l])=>`<div class="kpi ${cl}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+
+  // Component distribution
+  const byComp = {};
+  cs.forEach(c=>byComp[c.component]=(byComp[c.component]||0)+1);
+  const comps = Object.entries(byComp).sort((a,b)=>b[1]-a[1]);
+  drawComp(comps);
+
+  // Monthly trend
+  const byMonth = {};
+  cs.forEach(c=>{ if(!c.filed) return; const d=new Date(c.filed); if(isNaN(d))return;
+    const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; byMonth[k]=(byMonth[k]||0)+1; });
+  const months = Object.keys(byMonth).sort();
+  drawTrend(months.map(m=>{const [y,mm]=m.split("-");return fmtMonth(new Date(y,mm-1))}), months.map(m=>byMonth[m]));
+
+  renderEmerging(cs);
+  renderTable(cs.slice(0,40));
+}
+
+function drawComp(comps){
+  const ctx = $("compChart");
+  compChart && compChart.destroy();
+  compChart = new Chart(ctx,{type:"bar",data:{labels:comps.map(c=>c[0]),
+    datasets:[{data:comps.map(c=>c[1]),backgroundColor:"#2f6bb3",borderRadius:5,maxBarThickness:26}]},
+    options:{indexAxis:"y",plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:"#eef2f7"},ticks:{precision:0}},y:{grid:{display:false}}}}});
+}
+
+function drawTrend(labels,vals){
+  const ctx = $("trendChart");
+  trendChart && trendChart.destroy();
+  trendChart = new Chart(ctx,{type:"line",data:{labels,
+    datasets:[{data:vals,borderColor:"#123a6b",backgroundColor:"rgba(47,107,179,.12)",
+      fill:true,tension:.3,pointRadius:2,borderWidth:2}]},
+    options:{plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false}},y:{grid:{color:"#eef2f7"},ticks:{precision:0}}}}});
+}
+
+// Emerging = component whose last-90-day count is a spike over its prior baseline.
+function renderEmerging(cs){
+  const now = new Date();
+  const recentCut = new Date(now.getTime()-90*864e5);
+  const priorCut = new Date(now.getTime()-270*864e5);
+  const byComp = {};
+  cs.forEach(c=>{ const d=new Date(c.filed); if(isNaN(d))return;
+    byComp[c.component]=byComp[c.component]||{recent:0,prior:0};
+    if(d>=recentCut) byComp[c.component].recent++;
+    else if(d>=priorCut) byComp[c.component].prior++;
+  });
+  const rows = Object.entries(byComp).map(([comp,v])=>{
+    const baseline = v.prior/6; // avg per 90d over prior ~9 months
+    const ratio = baseline>0 ? v.recent/baseline : (v.recent>1?3:1);
+    return {comp,recent:v.recent,ratio,flag: v.recent>=3 && ratio>=2};
+  }).sort((a,b)=>b.ratio-a.ratio).slice(0,6);
+
+  $("emerging").innerHTML = rows.length ? rows.map(r=>`
+    <div class="erow ${r.flag?'flag':''}">
+      <span class="c">${r.comp}</span>
+      <span>
+        <span style="color:var(--muted);font-size:12px;margin-right:8px">${r.recent} in last 90d</span>
+        <span class="badge ${r.flag?'up':'flat'}">${r.flag?'▲ EMERGING':'stable'}</span>
+      </span>
+    </div>`).join("") : '<div class="loading">Not enough dated records.</div>';
+}
+
+function renderTable(rows){
+  $("tblBody").innerHTML = rows.length ? rows.map(c=>`
+    <tr>
+      <td class="odi">${c.odi}</td>
+      <td>${c.component}</td>
+      <td>${severityFlag(c)}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${c.filed||"—"}</td>
+      <td class="sum">${(c.summary||"").replace(/</g,"&lt;")}</td>
+    </tr>`).join("") : '<tr><td colspan="5" class="loading">No complaints found for this selection.</td></tr>';
+}
+
+async function genBrief(){
+  if(!lastData) return;
+  const cs = lastData.complaints;
+  $("genBrief").disabled = true; $("briefBody").textContent = "Generating grounded brief…";
+
+  // Build de-identified evidence: top high-severity + newest, capped.
+  const ev = cs.slice().sort((a,b)=>(b.highSeverity-a.highSeverity)).slice(0,10)
+    .map(c=>`ODI ${c.odi} [${c.component}${c.highSeverity?", high-sev":""}]: ${c.summary.slice(0,220)}`).join("\n");
+
+  const byComp={}; cs.forEach(c=>byComp[c.component]=(byComp[c.component]||0)+1);
+  const signals = Object.entries(byComp).sort((a,b)=>b[1]-a[1]).slice(0,5)
+    .map(([c,n])=>`${c}: ${n} complaints`).join("; ");
+
+  try{
+    const r = await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({vehicle:lastData.label, evidence:ev, signals})});
+    const data = await r.json();
+    if(data.error) throw new Error(data.detail||data.error);
+    $("briefBody").textContent = data.brief;
+    const odis = (data.brief.match(/\b\d{7,8}\b/g)||[]).slice(0,6);
+    $("briefMeta").innerHTML = odis.map(o=>`<span class="chip">ODI ${o}</span>`).join("")
+      + '<span class="chip">Groq · llama-3.1-8b-instant</span>';
+  }catch(e){
+    $("briefBody").textContent = "Brief unavailable: " + e.message;
+  }finally{
+    $("genBrief").disabled = false;
+  }
+}
+
+$("run").addEventListener("click", pull);
+$("genBrief").addEventListener("click", genBrief);
+pull(); // auto-load the default vehicle on first visit
+</script>
+</body>
+</html>
